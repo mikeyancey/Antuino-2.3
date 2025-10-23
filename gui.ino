@@ -3,6 +3,7 @@
 int x1, y1, w, h, x2, y2;
 #define X_OFFSET 18
 
+
 #define MENU_EXIT 0
 #define MENU_CHANGE_MHZ 1
 #define MENU_CHANGE_KHZ 2
@@ -11,11 +12,9 @@ int x1, y1, w, h, x2, y2;
 #define MENU_MODE_SWR 5
 #define MENU_MODE_PWR 6
 #define MENU_MODE_SNA 7
+#define MENU_MODE_SIG 8
 
-//#define MENU_MODE 5
-//#define MENU_BACK1 6
-
-#define MENU_PLOT 7
+#define MENU_MAX 8
 
 #define ACTION_SELECT 1
 #define ACTION_DESELECT 2
@@ -27,7 +26,8 @@ int x1, y1, w, h, x2, y2;
 #define BUTTON_SELECTED 2
 
 /*
- * The GUI is defined by these buttons.
+ * The GUI is defined by these screen buttons.
+ *
  * It is quite primitive and not even well written at the moment.
  * The rotary encoder jumps between 'buttons'. Each button has a
  * funciton associated with it like uiFreq, uiSpan etc.
@@ -40,16 +40,15 @@ int x1, y1, w, h, x2, y2;
  * white on black. all the encoder reading is done with the button's 
  * function until another button click releases the selection
  */
-
 struct Button {
   int id;
   int x, y;
-  char text[16];
+  char text[17];
   uint8_t state;
 };
 
 // Number of Buttons and their Locations
-#define MAX_BUTTONS 8
+#define MAX_BUTTONS 9
 struct Button buttons[MAX_BUTTONS] = {
   { MENU_EXIT, 30, 2, "OK", 0 },
   { MENU_CHANGE_MHZ, 30, 15, "MHZ", 0 },
@@ -57,9 +56,10 @@ struct Button buttons[MAX_BUTTONS] = {
   { MENU_CHANGE_HZ, 80, 15, "Hz", 0 },
 
   { MENU_SPAN, 30, 28, "SPAN", 0 },
-  { MENU_MODE_SWR, 30, 41, "SWR", 0 },
-  { MENU_MODE_PWR, 60, 41, "PWR", 0 },
-  { MENU_MODE_SNA, 90, 41, "SNA", 0 }
+  { MENU_MODE_SWR, 31, 41, "SWR", 0 },
+  { MENU_MODE_PWR, 55, 41, "PWR", 0 },
+  { MENU_MODE_SNA, 80, 41, "SNA", 0 },
+  { MENU_MODE_SIG, 106, 41, "SIG", 0 }
 };
 
 int uiFocus = MENU_CHANGE_MHZ, knob = 0, uiSelected = -1;
@@ -317,6 +317,9 @@ void calibration_mode() {
       calibrateMeter();
   }
 }
+
+
+
 void uiSWR(int action) {
   struct Button *b = get_button(MENU_MODE_SWR);
 
@@ -330,6 +333,7 @@ void uiSWR(int action) {
     mode = MODE_ANTENNA_ANALYZER;
     uiSNA(0);
     uiPWR(0);
+    uiSIG(0);
     EEPROM.put(LAST_MODE, mode);
   }
   if (mode == MODE_ANTENNA_ANALYZER)
@@ -348,13 +352,38 @@ void uiPWR(int action) {
 
   if (action == ACTION_SELECT) {
     update_button_state(b, BUTTON_SELECTED);
+#ifdef DEBUG
     Serial.println("*** selecting mode to power");
+#endif
     mode = MODE_MEASUREMENT_RX;
     uiSNA(0);
     uiSWR(0);
+    uiSIG(0);
     //updateScreen();
     EEPROM.put(LAST_MODE, mode);
   }
+  draw_button(b);
+}
+
+void uiSIG(int action) {
+  struct Button *b = get_button(MENU_MODE_SIG);
+
+  if (mode == MODE_SIGNAL_GENERATOR)
+    update_button_state(b, BUTTON_SELECTED);
+  else
+    update_button_state(b, 0);
+
+  if (action == ACTION_SELECT) {
+
+    mode = MODE_SIGNAL_GENERATOR;
+
+    update_button_state(b, BUTTON_SELECTED);
+    uiPWR(0);
+    uiSWR(0);
+    uiSNA(0);
+  }
+
+  // Cleanup the button
   draw_button(b);
 }
 
@@ -371,11 +400,14 @@ void uiSNA(int action) {
     update_button_state(b, BUTTON_SELECTED);
     uiPWR(0);
     uiSWR(0);
+    uiSIG(0);
+
     //updateScreen();
     EEPROM.put(LAST_MODE, mode);
   }
   draw_button(b);
 }
+
 
 void uiSpan(int action) {
   struct Button *b = get_button(MENU_SPAN);
@@ -427,42 +459,58 @@ void uiSpan(int action) {
   draw_button(b);
 }
 
-
+//
+// set_button_freq
+// 
+// Input: ulong Frequency f
+//
+// SET: MHz, kHz, Hz button/windows to each 3-digit cluster in the Frequency
 void set_button_freq(unsigned long f) {
-  char p[16];
+  char txtFrequency[16];
 
+  // Fetch our 'buttons' (acting as windows)
   struct Button *bmhz = get_button(MENU_CHANGE_MHZ);
   struct Button *bkhz = get_button(MENU_CHANGE_KHZ);
   struct Button *bhz = get_button(MENU_CHANGE_HZ);
 
-  memset(p, 0, sizeof(p));
-  ultoa(f, p, DEC);
-  bmhz->text[0] = 0;
-  bkhz->text[0] = 0;
-  bhz->text[0] = 0;
+  memset(txtFrequency, 0, sizeof(txtFrequency));
+  ultoa(f, txtFrequency, DEC);
+  memset(bmhz->text, 0, sizeof(bmhz->text));
+  memset(bkhz->text, 0, sizeof(bkhz->text));
+  memset(bhz->text, 0, sizeof(bhz->text));
 
+  // Repopulate the 3 windows
+  int lenFreq = strlen(txtFrequency);
 
-  //one mhz digit if less than 10 M, two digits if more
+  // Pad to 9 characters
+  int nToPad = 9 - lenFreq;
+  char txtPadFrequency[16];
+  memset(txtPadFrequency, 0, sizeof(txtPadFrequency));
+  memset(txtPadFrequency, ' ', nToPad);       // Fill with 'nToPad' blanks, LEFT of the number
+  strcat(txtPadFrequency, txtFrequency);      // THEN the number
 
-  if (f >= 100000000l) {
-    strncat(bmhz->text, p, 3);
-    strncat(bkhz->text, &p[3], 3);
-    strncat(bhz->text, &p[6], 3);
-  } else if (f >= 10000000l) {
-    strcat(bmhz->text, " ");
-    strncat(bmhz->text, p, 2);
-    strncat(bkhz->text, &p[2], 3);
-    strncat(bhz->text, &p[5], 3);
-  } else {
-    strcat(bmhz->text, "  ");
-    strncat(bmhz->text, p, 1);
-    strncat(bkhz->text, &p[1], 3);
-    strncat(bhz->text, &p[4], 3);
-  }
+#ifdef DEBUG
+  Serial.print("Frequency: "); Serial.println( txtFrequency);
+  Serial.print("LenPad:") ; Serial.println( nToPad);
+  Serial.print("txtPadFrequency: "); Serial.println( txtPadFrequency);
+#endif
+
+  // Left 3 digits box
+  strncpy(bmhz->text, txtPadFrequency, 3);
+  // Middle 3 digits  box
+  strncpy(bkhz->text, &txtPadFrequency[3], 3);
+  // Right 3 digits  box
+  strncpy(bhz->text, &txtPadFrequency[6], 3);
 }
 
 
-
+// 
+// uiFreq 
+//    Set the Frequency Center, using the three 'buttons' MHz, kHz, Hz
+//
+// The Si5351 Frequency Range: [8 kHz .. 225 MHz]
+// So each 3-digit cluster must not decrement below 8 kHz nor increment above 225 MHz
+//
 void uiFreq(int action) {
 
   struct Button *bmhz = get_button(MENU_CHANGE_MHZ);
@@ -496,25 +544,26 @@ void uiFreq(int action) {
 
     button_released();
 
+    // Si5351 Frequency Range: [8 kHz .. 225 MHz]
     while (!btnDown()) {  // While Knob Button UP
       switch (encoderDir) {
         case -1:
-          if (centerFreq > 500000l) {
-            if (uiFocus == MENU_CHANGE_MHZ)
-              centerFreq -= 1000000l;
-            else if (uiFocus == MENU_CHANGE_KHZ)
-              centerFreq -= 1000l;
-            else if (uiFocus == MENU_CHANGE_HZ)
+          if (centerFreq > 8000) {             // WAS: 500000l
+            if (uiFocus == MENU_CHANGE_MHZ & centerFreq > 1008000 )
+              centerFreq -= 1000000;
+            else if (uiFocus == MENU_CHANGE_KHZ & centerFreq > 8999)
+              centerFreq -= 1000;
+            else if (uiFocus == MENU_CHANGE_HZ & centerFreq > 8000)
               centerFreq -= 1;
           }
           break;
         case 1:
-          if (centerFreq < 499000000l) {
-            if (uiFocus == MENU_CHANGE_MHZ)
-              centerFreq += 1000000l;
-            else if (uiFocus == MENU_CHANGE_KHZ)
-              centerFreq += 1000l;
-            else if (uiFocus == MENU_CHANGE_HZ)
+          if (centerFreq < 225000000) {          // MAX FREQUENCY! // WAS: 499000000l
+            if (uiFocus == MENU_CHANGE_MHZ & centerFreq < 225000000)
+              centerFreq += 1000000;              // Was: 1000000l....1000l
+            else if (uiFocus == MENU_CHANGE_KHZ & centerFreq < 225000000)
+              centerFreq += 1000;
+            else if (uiFocus == MENU_CHANGE_HZ & centerFreq < 225000000)
               centerFreq += 1;
           }
           break;
@@ -570,6 +619,9 @@ void uiMessage(int id, int action) {
     case MENU_MODE_SNA:
       uiSNA(action);
       break;
+    case MENU_MODE_SIG:
+      uiSIG(action);
+      break;
     case MENU_EXIT:
       uiExit(action);
       break;
@@ -602,6 +654,7 @@ void doMenu() {
   uiPWR(0);
   uiSWR(0);
   uiSNA(0);
+  uiSIG(0);
   uiExit(0);
 
   long press_time = millis();
@@ -627,8 +680,8 @@ void doMenu() {
     // Handle cycling through 8 items in the menu
     if (knob < 0)
       knob = 0;
-    if (knob > 7)
-      knob = 7;
+    if (knob > MENU_MAX)
+      knob = MENU_MAX;
 
     // Other Strategy is to rotate around continuously
     // if (knob > 7)
@@ -702,7 +755,7 @@ void doMenu() {
 }
 
 //
-// Do a short averaging on an Analog Input Pin
+// A short averaging read on an Analog Input Pin
 //   In: constant value representing Analog Input Pin
 //   Out: INT value 0..1023, per Arduino Hardware Specs for
 //        the A2D inputs

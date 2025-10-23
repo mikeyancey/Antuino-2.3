@@ -6,15 +6,21 @@
 #include <EEPROM.h>
 
 //
-//     / \  | \ | |_   _|   _(_)_ __   ___  
+//     / \  | \ | |_   _|   _(_)_ __   ___
 //    / _ \ |  \| | | || | | | | '_ \ / _ \ 
 //   / ___ \| |\  | | || |_| | | | | | (_) |
-//  /_/   \_\_| \_| |_| \__,_|_|_| |_|\___/ 
+//  /_/   \_\_| \_| |_| \__,_|_|_| |_|\___/
 //
 //
 //  Upload Tips:
-//    Under  'Tools / Board', Choose "Arduino Nano"
-//    Under 'Tools / Processor", Choose - "Atmega328P (Old Bootloader)"
+//    Under 'Tools / Board', Choose "Arduino Nano"
+//    Under 'Tools / Port', Choose the COM port
+//    Under 'Tools / Processor", Choose - "Atmega328P (Old Bootloader)" <--
+//           This step is important, else the code will be sent at 115200 bps!
+//           The ANTuino runs at 57600
+//  GoogleAI: "The old Arduino bootloader, specifically ATmegaBOOT, uses a communication 
+//             speed of 57600 baud for uploading programs, while newer bootloaders like 
+//             OptiBoot use a faster speed of 115200 baud."
 //
 //  Libraries to Add:
 //    EEPROM
@@ -38,11 +44,15 @@
 //    |                                    |
 //    |                                    |
 //    +------------------------------------+
-//       
+//
 //  Version 2.3 Changes:
 //    - Interrupt based encoder replaces polled encoder motion (updateEncoder)
 //    - Tidied up DVM for stability and consistency
 //    - All Serial.Prints are enclosed by #ifdef DEBUG. Just define DEBUG to debug with Serial.Print
+//    - Added new MODE Button: [SIG] Signal Generator - Uses the Frequency to Output a tunable RF Freq
+//    - Cleaned up Frequency Button/Window behavior. Since the Si5351 has limits, the Frequency is controlled
+//           to stay between 8 kHz and 225 MHz, per Si5351 specs.
+//           But also: frequencies and sweeps down to 8 kHz may be explored, such as 455 kHz for typical AM Receivers.
 //
 //  MODs
 //    - Suggested: add three 0.1 uf (100nf) from pins A1, A2, and A3 to ground to improve debounce.
@@ -106,6 +116,8 @@ volatile int encoderDir = 0;  // [-1, 0, +1] Rotating Left, Stopped, or Right
 #define MODE_ANTENNA_ANALYZER 0
 #define MODE_MEASUREMENT_RX 1
 #define MODE_NETWORK_ANALYZER 2
+#define MODE_SIGNAL_GENERATOR 3
+
 char mode = MODE_ANTENNA_ANALYZER;
 
 char b[32], c[32], serial_in[32];
@@ -221,7 +233,7 @@ void active_delay(int delay_by) {
 // int tuningSpeed = 0;     // Apparently NO LONGER IN USE
 
 // void updateDisplay() {      // Can be used for DEBUG. Not included in #ifdef DEBUG
-//   sprintf(b, "%ldK, %ldK/div", frequency/1000, spanFreq/10000); 
+//   sprintf(b, "%ldK, %ldK/div", frequency/1000, spanFreq/10000);
 //   GLCD.DrawString(b, 20, 57);
 // }
 
