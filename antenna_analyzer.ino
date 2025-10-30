@@ -34,15 +34,15 @@
 //
 //    The KS0108 Display is 128 wide by 64 high.
 //    +------------------------------------+
+//    |<               128            ^   >|
 //    |                                    |
 //    |                                    |
 //    |                                    |
+//    |                              64    |
 //    |                                    |
 //    |                                    |
 //    |                                    |
-//    |                                    |
-//    |                                    |
-//    |                                    |
+//    |                               v    |
 //    +------------------------------------+
 //
 //  Version 2.3 Changes:
@@ -391,7 +391,6 @@ void calibrateMeter() {
 
   r = readOpen(20000000l);
 
-#ifdef DEBUG
   Serial.print("open reading of HF is ");
   Serial.println(r);
   EEPROM.put(OPEN_HF, r);
@@ -405,7 +404,6 @@ void calibrateMeter() {
   Serial.print("open reading of UHF is ");
   Serial.println(r);
   EEPROM.put(OPEN_UHF, r);
-#endif
 
   menuOn = 0;
 
